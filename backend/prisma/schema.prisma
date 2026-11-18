@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum CustomerStatus {
+  Active
+  Inactive
+}
+
+enum ShipmentStatus {
+  Pending
+  InTransit
+  OutForDelivery
+  Delivered
+  Cancelled
+}
+
+enum ChatRole {
+  user
+  assistant
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  role         String   @default("admin")
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Soft delete via deletedAt. The uniqueness of email among *live* rows is enforced by a
+// partial unique index created in the init migration (Prisma cannot express it natively).
+model Customer {
+  id        String         @id @default(uuid())
+  name      String
+  email     String
+  company   String
+  status    CustomerStatus @default(Active)
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+  shipments Shipment[]
+
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model Shipment {
+  id             String          @id @default(uuid())
+  trackingNumber String          @unique
+  customerId     String
+  origin         String
+  destination    String
+  status         ShipmentStatus  @default(Pending)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  createdBy      String?
+  updatedBy      String?
+  deletedAt      DateTime?
+  customer       Customer        @relation(fields: [customerId], references: [id])
+  events         ShipmentEvent[]
+
+  @@index([customerId])
+  @@index([status])
+}
+
+// Append-only status history (audit trail, also the natural source for Fabric / analytics)
+model ShipmentEvent {
+  id         String         @id @default(uuid())
+  shipmentId String
+  fromStatus ShipmentStatus?
+  toStatus   ShipmentStatus
+  changedBy  String?
+  createdAt  DateTime       @default(now())
+  shipment   Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId])
+}
+
+model ChatMessage {
+  id        String   @id @default(uuid())
+  sessionId String
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+}
